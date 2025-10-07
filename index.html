@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather App</title>
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body> 
+  <div class="card">
+    <div class="theme-toggle">
+      <button id="themeBtn"><i class="bx bx-moon"></i></button>
+    </div>
+
+    <div class="search">
+      <input type="text" placeholder="Enter City Name" spellcheck="false">
+      <button><i class="bx bx-search"></i></button>
+    </div>
+
+    <div class="weather"> 
+      <i class="bx bx-cgcloud weather-icon"></i>
+      <h1 class="temp">--°C</h1>
+      <h2 class="city">---</h2>
+      <div class="details">
+        <div class="col">
+          <i class="bx bx-water"></i>
+          <p class="humidity">Humidity: --%</p>
+        </div>
+        <div class="col">
+          <i class="bx bx-wind"></i>
+          <p class="wind">-- km/h</p>
+        </div>
+      </div>
+      <p class="error"></p>
+    </div>
+
+    <div class="forecast">
+      <h3>5-Day Forecast:</h3>
+      <div class="forecast-cards"></div>
+    </div>
+
+    <div class="recent-searches">
+      <h3>Recent Searches:</h3>
+      <div class="cities"></div>
+    </div>
+  </div>
+
+  <script>
+    const apikey = "f8fc0a64e7484d5644aa6330f371cc55"; 
+    const apiUrlCity = "https://api.openweathermap.org/data/2.5/weather?units=metric&q=";
+    const apiUrlGeo = "https://api.openweathermap.org/data/2.5/weather?units=metric&";
+
+    const searchInput = document.querySelector(".search input");
+    const searchBtn = document.querySelector(".search button");
+    const errorEl = document.querySelector(".error");
+    const weatherIcon = document.querySelector(".weather-icon");
+    const body = document.body;
+    const citiesContainer = document.querySelector(".cities");
+    const themeBtn = document.getElementById("themeBtn");
+    const forecastCardsContainer = document.querySelector(".forecast-cards");
+
+    let recentCities = JSON.parse(localStorage.getItem("recentCities")) || [];
+
+    function updateRecentSearches() {
+      citiesContainer.innerHTML = "";
+      recentCities.forEach(city => {
+        const cityBtn = document.createElement("button");
+        cityBtn.textContent = city;
+        cityBtn.addEventListener("click", () => checkWeather(city));
+        citiesContainer.appendChild(cityBtn);
+      });
+    }
+
+    async function checkWeather(city) {
+      try {
+        const response = await fetch(apiUrlCity + city + `&appid=${apikey}`);
+        if (!response.ok) throw new Error("City not found");
+
+        const data = await response.json();
+        updateUI(data);
+
+        // Add to recent searches
+        if (!recentCities.includes(city)) {
+          recentCities.unshift(city);
+          if (recentCities.length > 5) recentCities.pop();
+          localStorage.setItem("recentCities", JSON.stringify(recentCities));
+          updateRecentSearches();
+        }
+
+      } catch (error) {
+        showError();
+      }
+    }
+
+    async function checkWeatherByCoords(lat, lon) {
+      try {
+        const response = await fetch(apiUrlGeo + `lat=${lat}&lon=${lon}&appid=${apikey}`);
+        if (!response.ok) throw new Error("Location not found");
+
+        const data = await response.json();
+        updateUI(data);
+      } catch (error) {
+        showError();
+      }
+    }
+
+    async function updateForecast(city) {
+      try {
+        const forecastResponse = await fetch(`https://api.openweathermap.org/data/2.5/forecast?units=metric&q=${city}&appid=${apikey}`);
+        if (!forecastResponse.ok) throw new Error("Forecast not found");
+
+        const forecastData = await forecastResponse.json();
+        forecastCardsContainer.innerHTML = "";
+
+        // Filter to get one forecast per day (12:00 PM)
+        const dailyForecasts = forecastData.list.filter(f => f.dt_txt.includes("12:00:00"));
+
+        dailyForecasts.forEach(f => {
+          const date = new Date(f.dt_txt);
+          const day = date.toLocaleDateString("en-US", { weekday: "short" });
+          const icon = f.weather[0].main;
+          let iconClass = "bx bx-cloud";
+          if (icon === "Clouds") iconClass = "bx bx-cloud";
+          else if (icon === "Clear") iconClass = "bx bx-sun";
+          else if (icon === "Rain") iconClass = "bx bx-cloud-rain";
+          else if (icon === "Drizzle") iconClass = "bx bx-water";
+          else if (icon === "Mist") iconClass = "bx bx-wind";
+
+          const card = document.createElement("div");
+          card.className = "forecast-card";
+          card.innerHTML = `
+            <p>${day}</p>
+            <i class="bx ${iconClass}"></i>
+            <p>${Math.round(f.main.temp_min)}°C / ${Math.round(f.main.temp_max)}°C</p>
+          `;
+          forecastCardsContainer.appendChild(card);
+        });
+      } catch (error) {
+        console.warn("Forecast fetch failed:", error);
+      }
+    }
+
+    function updateUI(data) {
+      const cityName = data.name;
+      const temp = Math.round(data.main.temp) + "°C";
+      const humidity = "Humidity: " + data.main.humidity + "%";
+      const wind = data.wind.speed + " km/h";
+
+      document.querySelector(".city").textContent = cityName;
+      document.querySelector(".temp").textContent = temp;
+      document.querySelector(".humidity").textContent = humidity;
+      document.querySelector(".wind").textContent = wind;
+      errorEl.textContent = "";
+
+      // Change icon and background
+      const weather = data.weather[0].main;
+      if (weather === "Clouds") {
+        weatherIcon.className = "bx bx-cloud weather-icon";
+        body.style.background = "linear-gradient(to right, #bdc3c7, #2c3e50)";
+      } else if (weather === "Clear") {
+        weatherIcon.className = "bx bx-sun weather-icon";
+        body.style.background = "linear-gradient(to right, #f6d365, #fda085)";
+      } else if (weather === "Rain") {
+        weatherIcon.className = "bx bx-cloud-rain weather-icon";
+        body.style.background = "linear-gradient(to right, #4e54c8, #8f94fb)";
+      } else if (weather === "Drizzle") {
+        weatherIcon.className = "bx bx-water weather-icon";
+        body.style.background = "linear-gradient(to right, #89f7fe, #66a6ff)";
+      } else if (weather === "Mist") {
+        weatherIcon.className = "bx bx-wind weather-icon";
+        body.style.background = "linear-gradient(to right, #757f9a, #d7dde8)";
+      } else {
+        weatherIcon.className = "bx bx-cloud weather-icon";
+        body.style.background = "linear-gradient(to right, #bdc3c7, #2c3e50)";
+      }
+
+      // Update forecast
+      updateForecast(cityName);
+    }
+
+    function showError() {
+      errorEl.textContent = "❌ City not found! Please try again.";
+      document.querySelector(".city").textContent = "---";
+      document.querySelector(".temp").textContent = "--°C";
+      document.querySelector(".humidity").textContent = "Humidity: --%";
+      document.querySelector(".wind").textContent = "-- km/h";
+      weatherIcon.className = "bx bx-cloud weather-icon";
+      body.style.background = "linear-gradient(to right, #6dd5ed, #2193b0)";
+      forecastCardsContainer.innerHTML = "";
+    }
+
+    // Theme toggle
+    themeBtn.addEventListener("click", () => {
+      body.classList.toggle("dark");
+      if(body.classList.contains("dark")){
+        themeBtn.innerHTML = '<i class="bx bx-sun"></i>';
+      } else {
+        themeBtn.innerHTML = '<i class="bx bx-moon"></i>';
+      }
+    });
+
+    // Default: Try user location first
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          let lat = pos.coords.latitude;
+          let lon = pos.coords.longitude;
+          checkWeatherByCoords(lat, lon);
+        },
+        (err) => {
+          console.warn("Geolocation denied, using fallback city.");
+          checkWeather("Bangalore");
+        }
+      );
+    } else {
+      checkWeather("Bangalore");
+    }
+
+    // Search button click
+    searchBtn.addEventListener("click", () => {
+      const city = searchInput.value.trim();
+      if (city) checkWeather(city);
+    });
+
+    // Enter key press
+    searchInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        const city = searchInput.value.trim();
+        if (city) checkWeather(city);
+      }
+    });
+
+    // Load recent searches on start
+    updateRecentSearches();
+  </script>
+</body>
+</html>
+
+
